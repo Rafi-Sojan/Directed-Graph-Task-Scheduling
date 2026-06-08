@@ -1,29 +1,29 @@
 def topo_sort_dfs(tasks, graph):
-    visited = set()
-    rec_stack = set()
+    temporary = set()
+    permanent = set()
     order = []
 
     def dfs(node):
-        if node in rec_stack:
-            return False  
-        if node in visited:
+        if node in temporary:
+            return False
+        if node in permanent:
             return True
 
-        rec_stack.add(node)
-        visited.add(node)
+        temporary.add(node)
 
         for neighbor in graph[node]:
             if not dfs(neighbor):
                 return False
 
-        rec_stack.remove(node)
+        temporary.remove(node)
+        permanent.add(node)
         order.append(node)
         return True
 
     for t in tasks:
         node = t["task"]
-        if node not in visited:
+        if node not in permanent:
             if not dfs(node):
-                return None  
+                return None
 
     return order[::-1]

@@ -1,32 +1,24 @@
+from collections import deque
+
+
 def topo_sort_bfs(tasks, graph):
-    from collections import defaultdict, deque
-
-    indegree = defaultdict(int)
-
-    for t in tasks:
-        indegree[t["task"]] = 0
+    indegree = {task["task"]: 0 for task in tasks}
 
     for u in graph:
         for v in graph[u]:
             indegree[v] += 1
 
-    q = deque([node for node in indegree if indegree[node] == 0])
+    queue = deque([node for node in indegree if indegree[node] == 0])
     order = []
 
-      
-
-    while q:
-        node = q.popleft()
+    while queue:
+        node = queue.popleft()
         order.append(node)
-
-            
 
         for neighbour in graph[node]:
             indegree[neighbour] -= 1
             if indegree[neighbour] == 0:
-                q.append(neighbour)
-
-          
+                queue.append(neighbour)
 
     if len(order) != len(tasks):
         return None

@@ -1,47 +1,48 @@
 # Directed Graph Task Scheduling System
 
-A DAG-based task scheduling system built with Python and Streamlit that supports:
+A DAG-based task scheduling system built with Python and Streamlit. It lets you create tasks, define dependencies, detect cycles, and generate a valid execution order.
 
 * Topological Sorting using BFS
 * Topological Sorting using DFS
-* Priority-based Scheduling using a Min-Heap
-* Graph Visualization using NetworkX
+* Graph visualization using NetworkX
 
 ---
 
 ## Features
 
-### Multiple Scheduling Algorithms
+### Scheduling Algorithms
 
-* BFS → Standard topological ordering
-* DFS → Recursive traversal-based ordering
-* Priority Scheduling → Chooses highest-priority task among valid options
+* BFS -> Kahn's algorithm for standard topological ordering
+* DFS -> Depth-first traversal with cycle detection
 
-### Graph Visualization
+### User Interface
 
+* Sidebar task builder
+* Editable dependency list
+* Sample workflow loader
+* Adjacency matrix view
+* CSV export for the execution order
 * Directed graph rendering using NetworkX and Matplotlib
-* Color-coded nodes based on priority:
-
-  * Level 1 (High)
-  * Level 2 (Medium)
-  * Level 3 (Low)
+* Design analysis and timing test cases for BFS and DFS
+* Graph visualization for each algorithm test case
 
 ---
 
 ## Project Structure
 
-```id="u7s9v1"
+```text
 frontend/
-│
-├── web_app.py
-│
-└── backend/
-    ├── __init__.py
-    ├── graph_builder.py
-    ├── topo_bfs.py
-    ├── topo_dfs.py
-    ├── priority_scheduler.py
-    └── visualizer.py
+|
+|-- web-app.py
+|
+`-- backend/
+    |-- __init__.py
+    |-- analysis.py
+    |-- graph_builder.py
+    |-- cycle_detector.py
+    |-- topological_sort_bfs.py
+    |-- topological_sort_dfs.py
+    `-- visualizer.py
 ```
 
 ---
@@ -50,21 +51,21 @@ frontend/
 
 ### 1. Clone the repository
 
-```id="5q4t0x"
+```bash
 git clone https://github.com/your-username/dag-task-scheduler.git
 cd dag-task-scheduler/frontend
 ```
 
 ### 2. Install dependencies
 
-```id="d2l9pz"
-pip install streamlit networkx matplotlib
+```bash
+pip install -r ../requirements.txt
 ```
 
 ---
 
 ## Run the Application
 
-```id="k8f1bx"
-streamlit run web_app.py
+```bash
+streamlit run web-app.py
 ```

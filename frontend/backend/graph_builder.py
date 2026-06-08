@@ -1,15 +1,7 @@
-from collections import defaultdict
-
 def build_graph(tasks):
-    graph = defaultdict(list)
+    graph = {task["task"]: [] for task in tasks}
+    task_names = set(graph)
 
-    task_names = {t["task"] for t in tasks}
-
-    
-    for name in task_names:
-        graph[name] = []
-
-    
     for t in tasks:
         task = t["task"]
         for dep in t.get("depends_on", []):
