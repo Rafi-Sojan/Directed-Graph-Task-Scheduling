@@ -2,7 +2,14 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 
-from backend.analysis import ALGORITHM_DESIGN, TEST_CASES, run_analysis
+from backend.analysis import (
+    ALGORITHM_DESIGN,
+    benchmark_iterations,
+    benchmark_scaling,
+    count_edges,
+    make_generated_analysis_dag,
+    trace_algorithm,
+)
 from backend.cycle_detector import find_cycle
 from backend.graph_builder import build_graph
 from backend.topological_sort_bfs import topo_sort_bfs
@@ -67,6 +74,32 @@ def sync_dependency_widget_state(tasks):
             task["depends_on"] = [
                 dep for dep in st.session_state[key] if dep in valid_choices
             ]
+
+
+def draw_scaling_histograms(scaling_df):
+    figure, axes = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
+
+    axes[0].bar(
+        scaling_df["Graph Size"],
+        scaling_df["DFS Time (ms)"],
+        width=3,
+        color="#4f46e5",
+    )
+    axes[0].set_title("DFS Time by Graph Size")
+    axes[0].set_xlabel("Number of vertices")
+    axes[0].set_ylabel("Average time (ms)")
+
+    axes[1].bar(
+        scaling_df["Graph Size"],
+        scaling_df["BFS Time (ms)"],
+        width=3,
+        color="#14b8a6",
+    )
+    axes[1].set_title("BFS Time by Graph Size")
+    axes[1].set_xlabel("Number of vertices")
+
+    figure.tight_layout()
+    return figure
 
 
 st.set_page_config(page_title="Directed Graph Task Scheduler", layout="wide")
@@ -170,11 +203,11 @@ with schedule_tab:
 
     algorithm = st.radio(
         "Algorithm",
-        ["BFS", "DFS"],
+        ["DFS", "BFS"],
         horizontal=True,
         captions=[
-            "BFS - scheduling.",
-            "DFS - cycle detection and ordering.",
+            "DFS - topological ordering for DAGs.",
+            "BFS - indegree-based topological ordering.",
         ],
     )
 
@@ -187,7 +220,11 @@ with schedule_tab:
         cycle = find_cycle(graph) if result is None else None
 
         if cycle:
-            st.error("Cycle detected: " + " -> ".join(cycle))
+            st.error(
+                "Invalid graph: cycles are not allowed in a DAG. "
+                + "Cycle path: "
+                + " -> ".join(cycle)
+            )
         else:
             st.success(f"{algorithm} produced a valid execution order.")
             result_df = pd.DataFrame(
@@ -229,6 +266,78 @@ with graph_tab:
         plt.close(figure)
 
 with analysis_tab:
+    st.subheader("Current DAG Analysis")
+
+    if graph_error:
+        st.error(graph_error)
+    elif not tasks:
+        st.info("Add tasks in the Task Builder to analyze your own DAG.")
+    else:
+        current_cycle = find_cycle(graph)
+        if current_cycle:
+            st.error(
+                "Invalid graph: analysis requires a DAG. Cycle path: "
+                + " -> ".join(current_cycle)
+            )
+        else:
+            current_bfs_timing = pd.DataFrame(
+                benchmark_iterations("BFS", tasks, graph, 10)
+            )
+            current_dfs_timing = pd.DataFrame(
+                benchmark_iterations("DFS", tasks, graph, 10)
+            )
+            current_summary = pd.DataFrame(
+                [
+                    {
+                        "Algorithm": "DFS",
+                        "Tasks": len(tasks),
+                        "Edges": total_edges,
+                        "Average Time (ms)": round(
+                            current_dfs_timing["Time Taken (ms)"].mean(), 6
+                        ),
+                        "Result": "Valid",
+                    },
+                    {
+                        "Algorithm": "BFS",
+                        "Tasks": len(tasks),
+                        "Edges": total_edges,
+                        "Average Time (ms)": round(
+                            current_bfs_timing["Time Taken (ms)"].mean(), 6
+                        ),
+                        "Result": "Valid",
+                    },
+                ]
+            )
+
+            st.dataframe(current_summary, hide_index=True, width="stretch")
+
+            current_graph_figure = draw_graph(
+                tasks,
+                graph,
+                title="Current Task Builder DAG",
+            )
+            st.pyplot(current_graph_figure, width=720, clear_figure=True)
+            plt.close(current_graph_figure)
+
+            current_trace_algorithm = st.radio(
+                "Trace current DAG with",
+                ["DFS", "BFS"],
+                horizontal=True,
+                key="current_dag_trace_algorithm",
+            )
+            current_trace_df = pd.DataFrame(
+                trace_algorithm(current_trace_algorithm, tasks, graph)
+            )
+            st.dataframe(current_trace_df, hide_index=True, width="stretch")
+
+            st.download_button(
+                "Download current DAG analysis as CSV",
+                current_summary.to_csv(index=False).encode("utf-8"),
+                file_name="current_dag_analysis.csv",
+                mime="text/csv",
+            )
+
+    st.divider()
     st.subheader("Design Analysis")
     st.dataframe(
         pd.DataFrame(ALGORITHM_DESIGN),
@@ -236,50 +345,235 @@ with analysis_tab:
         width="stretch",
     )
 
-    st.subheader("Algorithm Test Cases")
-    iterations = st.slider(
-        "Timing iterations per test case",
+    st.subheader("Generated DAG Analysis")
+    generated_col_a, generated_col_b = st.columns(2)
+    generated_dag_type = generated_col_a.selectbox(
+        "Generated DAG type",
+        ["Non-Random DAG", "Random DAG"],
+    )
+    generated_dag_size = generated_col_b.slider(
+        "Generated DAG size",
+        min_value=5,
+        max_value=100,
+        value=20,
+        step=5,
+    )
+    generated_edge_probability = 0.15
+    generated_seed = 42
+
+    if generated_dag_type == "Random DAG":
+        generated_random_col_a, generated_random_col_b = st.columns(2)
+        generated_edge_probability = generated_random_col_a.slider(
+            "Generated DAG edge probability",
+            min_value=0.01,
+            max_value=0.50,
+            value=0.15,
+            step=0.01,
+        )
+        generated_seed = generated_random_col_b.number_input(
+            "Generated DAG random seed",
+            min_value=1,
+            max_value=9999,
+            value=42,
+            step=1,
+        )
+    generated_iterations = st.slider(
+        "Timing iterations for generated DAG summary",
         min_value=100,
         max_value=5000,
         value=500,
         step=100,
     )
 
-    analysis_df = pd.DataFrame(run_analysis(iterations))
-    st.dataframe(analysis_df, hide_index=True, width="stretch")
+    selected_tasks = make_generated_analysis_dag(
+        generated_dag_size,
+        generated_dag_type,
+        generated_edge_probability,
+        generated_seed,
+    )
+    selected_graph = build_graph(selected_tasks)
+    selected_edges = count_edges(selected_graph)
+    generated_dfs_timing = pd.DataFrame(
+        benchmark_iterations(
+            "DFS",
+            selected_tasks,
+            selected_graph,
+            generated_iterations,
+        )
+    )
+    generated_bfs_timing = pd.DataFrame(
+        benchmark_iterations(
+            "BFS",
+            selected_tasks,
+            selected_graph,
+            generated_iterations,
+        )
+    )
+    generated_summary = pd.DataFrame(
+        [
+            {
+                "DAG Type": generated_dag_type,
+                "Algorithm": "DFS",
+                "Vertices": len(selected_tasks),
+                "Edges": selected_edges,
+                "Average Time (ms)": round(
+                    generated_dfs_timing["Time Taken (ms)"].mean(), 6
+                ),
+                "Result": "Valid",
+            },
+            {
+                "DAG Type": generated_dag_type,
+                "Algorithm": "BFS",
+                "Vertices": len(selected_tasks),
+                "Edges": selected_edges,
+                "Average Time (ms)": round(
+                    generated_bfs_timing["Time Taken (ms)"].mean(), 6
+                ),
+                "Result": "Valid",
+            },
+        ]
+    )
+    st.dataframe(generated_summary, hide_index=True, width="stretch")
     st.download_button(
-        "Download analysis as CSV",
-        analysis_df.to_csv(index=False).encode("utf-8"),
-        file_name="algorithm_analysis.csv",
+        "Download generated DAG analysis as CSV",
+        generated_summary.to_csv(index=False).encode("utf-8"),
+        file_name="generated_dag_analysis.csv",
         mime="text/csv",
     )
-
-    st.subheader("Test Case Graph Visualization")
-    selected_case_name = st.selectbox(
-        "Choose test case graph",
-        [case["name"] for case in TEST_CASES],
-    )
-    selected_case = next(
-        case for case in TEST_CASES if case["name"] == selected_case_name
-    )
-    selected_tasks = selected_case["tasks"]
-    selected_graph = build_graph(selected_tasks)
-    selected_edges = sum(len(neighbours) for neighbours in selected_graph.values())
 
     graph_info_a, graph_info_b, graph_info_c = st.columns(3)
     graph_info_a.metric("Case tasks", len(selected_tasks))
     graph_info_b.metric("Case edges", selected_edges)
-    graph_info_c.metric("Expected", selected_case["expected"])
-
-    if selected_case["expected"] == "Cycle detected":
-        cycle = find_cycle(selected_graph)
-        if cycle:
-            st.error("Cycle path: " + " -> ".join(cycle))
+    graph_info_c.metric("Expected", "Valid DAG")
 
     case_figure = draw_graph(
         selected_tasks,
         selected_graph,
-        title=f"{selected_case_name} Graph",
+        title=f"{generated_dag_type} ({generated_dag_size} vertices)",
     )
     st.pyplot(case_figure, width=720, clear_figure=True)
     plt.close(case_figure)
+
+    st.subheader("Individual Iteration Timing")
+    timing_algorithm = st.radio(
+        "Algorithm for individual timing",
+        ["DFS", "BFS"],
+        horizontal=True,
+        key="individual_timing_algorithm",
+    )
+    timing_runs = st.slider(
+        "Number of individual timing runs",
+        min_value=1,
+        max_value=100,
+        value=10,
+        step=1,
+    )
+    timing_df = pd.DataFrame(
+        benchmark_iterations(
+            timing_algorithm,
+            selected_tasks,
+            selected_graph,
+            timing_runs,
+        )
+    )
+
+    timing_metric_a, timing_metric_b, timing_metric_c = st.columns(3)
+    timing_metric_a.metric(
+        "Fastest run (ms)",
+        f"{timing_df['Time Taken (ms)'].min():.6f}",
+    )
+    timing_metric_b.metric(
+        "Slowest run (ms)",
+        f"{timing_df['Time Taken (ms)'].max():.6f}",
+    )
+    timing_metric_c.metric(
+        "Average run (ms)",
+        f"{timing_df['Time Taken (ms)'].mean():.6f}",
+    )
+    st.dataframe(timing_df, hide_index=True, width="stretch")
+    st.download_button(
+        "Download individual timing as CSV",
+        timing_df.to_csv(index=False).encode("utf-8"),
+        file_name="individual_iteration_timing.csv",
+        mime="text/csv",
+    )
+
+    st.subheader("Algorithm Iteration Trace")
+    trace_algorithm_name = st.radio(
+        "Algorithm for step trace",
+        ["DFS", "BFS"],
+        horizontal=True,
+        key="trace_algorithm",
+    )
+    trace_df = pd.DataFrame(
+        trace_algorithm(trace_algorithm_name, selected_tasks, selected_graph)
+    )
+    st.dataframe(trace_df, hide_index=True, width="stretch")
+
+    st.subheader("Graph Size Timing Histograms")
+    hist_col_a, hist_col_b, hist_col_c = st.columns(3)
+    max_graph_size = hist_col_a.slider(
+        "Maximum graph size",
+        min_value=20,
+        max_value=500,
+        value=100,
+        step=20,
+    )
+    size_step = hist_col_b.slider(
+        "Size interval",
+        min_value=10,
+        max_value=100,
+        value=20,
+        step=10,
+    )
+    scaling_repetitions = hist_col_c.slider(
+        "Runs per size",
+        min_value=10,
+        max_value=1000,
+        value=100,
+        step=10,
+    )
+    scaling_graph_type = st.selectbox(
+        "Graph type for size experiment",
+        ["Linear", "Branching", "Independent", "Random DAG"],
+    )
+    random_edge_probability = 0.15
+    random_seed = 42
+
+    if scaling_graph_type == "Random DAG":
+        random_col_a, random_col_b = st.columns(2)
+        random_edge_probability = random_col_a.slider(
+            "Random edge probability",
+            min_value=0.01,
+            max_value=0.50,
+            value=0.15,
+            step=0.01,
+        )
+        random_seed = random_col_b.number_input(
+            "Random seed",
+            min_value=1,
+            max_value=9999,
+            value=42,
+            step=1,
+        )
+
+    scaling_df = pd.DataFrame(
+        benchmark_scaling(
+            max_graph_size,
+            size_step,
+            scaling_graph_type,
+            scaling_repetitions,
+            random_edge_probability,
+            random_seed,
+        )
+    )
+    scaling_figure = draw_scaling_histograms(scaling_df)
+    st.pyplot(scaling_figure, width=760, clear_figure=True)
+    plt.close(scaling_figure)
+    st.dataframe(scaling_df, hide_index=True, width="stretch")
+    st.download_button(
+        "Download graph-size timing as CSV",
+        scaling_df.to_csv(index=False).encode("utf-8"),
+        file_name="graph_size_timing.csv",
+        mime="text/csv",
+    )

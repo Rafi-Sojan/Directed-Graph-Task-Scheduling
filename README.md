@@ -1,9 +1,9 @@
 # Directed Graph Task Scheduling System
 
-A DAG-based task scheduling system built with Python and Streamlit. It lets you create tasks, define dependencies, detect cycles, and generate a valid execution order.
+A DAG-based task scheduling system built with Python and Streamlit. It lets you create tasks, define dependencies, reject invalid cyclic graphs, and generate a valid execution order for DAGs.
 
-* Topological Sorting using BFS
 * Topological Sorting using DFS
+* Topological Sorting using BFS
 * Graph visualization using NetworkX
 
 ---
@@ -12,8 +12,8 @@ A DAG-based task scheduling system built with Python and Streamlit. It lets you 
 
 ### Scheduling Algorithms
 
+* DFS -> Depth-first traversal for topological ordering in DAGs
 * BFS -> Kahn's algorithm for standard topological ordering
-* DFS -> Depth-first traversal with cycle detection
 
 ### User Interface
 
@@ -25,6 +25,9 @@ A DAG-based task scheduling system built with Python and Streamlit. It lets you 
 * Directed graph rendering using NetworkX and Matplotlib
 * Design analysis and timing test cases for BFS and DFS
 * Graph visualization for each algorithm test case
+* Individual timing iterations and step-by-step algorithm traces
+* Histogram-based timing analysis for increasing graph sizes
+* Reproducible random DAG generation with edge probability and seed controls
 
 ---
 
